@@ -5,14 +5,17 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
+from datetime import datetime
+import os
 
-# Загружаем данные
-df = pd.read_csv('https://raw.githubusercontent.com/AnfisaAnalytics/app/3eaedc5fc2649d869db5c9c2e23621b7f858231b/sales_data.csv')
-
-df['Дата'] = pd.to_datetime(df['Дата'])
-df['Год'] = df['Дата'].dt.year
-df['Месяц'] = df['Дата'].dt.month
-df['Месяц_название'] = df['Дата'].dt.month_name()
+# Функция для загрузки данных
+def load_data():
+    df = pd.read_csv('https://raw.githubusercontent.com/AnfisaAnalytics/app/3eaedc5fc2649d869db5c9c2e23621b7f858231b/sales_data.csv')
+    df['Дата'] = pd.to_datetime(df['Дата'])
+    df['Год'] = df['Дата'].dt.year
+    df['Месяц'] = df['Дата'].dt.month
+    df['Месяц_название'] = df['Дата'].dt.month_name()
+    return df
 
 # Инициализируем приложение
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
@@ -37,7 +40,7 @@ header = dbc.Navbar(
             html.A(
                 dbc.Row(
                     [
-                        dbc.Col(html.H1("Аналитика продаж__", className="ms-2 text-white")),
+                        dbc.Col(html.H1("Аналитика продаж", className="ms-2 text-white")),
                     ],
                     align="center",
                 ),
@@ -51,47 +54,49 @@ header = dbc.Navbar(
     className="mb-4",
 )
 
-# Создаем фильтры
-filters = dbc.Card(
-    dbc.CardBody(
-        [
-            html.H4("Фильтры", className="card-title"),
-            html.Hr(),
-            html.P("Выберите категорию:"),
-            dcc.Dropdown(
-                id='category-filter',
-                options=[{'label': cat, 'value': cat} for cat in df['Категория'].unique()],
-                value=df['Категория'].unique().tolist(),
-                multi=True
-            ),
-            html.P("Выберите регион:", className="mt-3"),
-            dcc.Dropdown(
-                id='region-filter',
-                options=[{'label': region, 'value': region} for region in df['Регион'].unique()],
-                value=df['Регион'].unique().tolist(),
-                multi=True
-            ),
-            html.P("Выберите период:", className="mt-3"),
-            dcc.DatePickerRange(
-                id='date-filter',
-                start_date=df['Дата'].min(),
-                end_date=df['Дата'].max(),
-                display_format='DD.MM.YYYY'
-            ),
-        ]
-    ),
-    className="mb-4",
-)
-
 # Создаем макет приложения
-app.layout = html.Div(
+app.layout = html.Div( 
     [
         header,
+        # Скрытый div для хранения данных
+        html.Div(id='data-store', style={'display': 'none'}),
+        # Интервал для автоматического обновления данных (каждые 5 минут = 300000 мс)
+        dcc.Interval(
+            id='interval-component',
+            interval=300000,  # в миллисекундах
+            n_intervals=0
+        ),
         dbc.Container(
             [
                 dbc.Row(
                     [
-                        dbc.Col(filters, md=3),
+                        dbc.Col(
+                            dbc.Card(
+                                dbc.CardBody(
+                                    [
+                                        html.H4("Фильтры", className="card-title"),
+                                        html.Hr(),
+                                        html.P("Выберите категорию:"),
+                                        dcc.Dropdown(
+                                            id='category-filter',
+                                            multi=True
+                                        ),
+                                        html.P("Выберите регион:", className="mt-3"),
+                                        dcc.Dropdown(
+                                            id='region-filter',
+                                            multi=True
+                                        ),
+                                        html.P("Выберите период:", className="mt-3"),
+                                        dcc.DatePickerRange(
+                                            id='date-filter',
+                                            display_format='DD.MM.YYYY'
+                                        ),
+                                    ]
+                                ),
+                            ),
+                            md=3,
+                            className="mb-4",
+                        ),
                         dbc.Col(
                             [
                                 dbc.Row(
@@ -180,6 +185,18 @@ app.layout = html.Div(
                                         ),
                                     ]
                                 ),
+                                # Добавляем информацию о последнем обновлении данных
+                                dbc.Row(
+                                    [
+                                        dbc.Col(
+                                            html.Div(
+                                                id="last-update-info",
+                                                className="text-muted text-end"
+                                            ),
+                                            md=12
+                                        ),
+                                    ]
+                                ),
                             ],
                             md=9
                         ),
@@ -193,6 +210,55 @@ app.layout = html.Div(
     style={"backgroundColor": colors['background']}
 )
 
+# Колбэк для загрузки данных при запуске и по интервалу
+@app.callback(
+    [
+        Output('data-store', 'children'),
+        Output('category-filter', 'options'),
+        Output('category-filter', 'value'),
+        Output('region-filter', 'options'),
+        Output('region-filter', 'value'),
+        Output('date-filter', 'min_date_allowed'),
+        Output('date-filter', 'max_date_allowed'),
+        Output('date-filter', 'start_date'),
+        Output('date-filter', 'end_date'),
+        Output('last-update-info', 'children')
+    ],
+    [Input('interval-component', 'n_intervals')]
+)
+def update_data(n):
+    # Загружаем данные
+    df = load_data()
+    
+    # Формируем опции для фильтров
+    category_options = [{'label': cat, 'value': cat} for cat in df['Категория'].unique()]
+    category_values = df['Категория'].unique().tolist()
+    
+    region_options = [{'label': region, 'value': region} for region in df['Регион'].unique()]
+    region_values = df['Регион'].unique().tolist()
+    
+    # Определяем диапазон дат
+    min_date = df['Дата'].min()
+    max_date = df['Дата'].max()
+    
+    # Текущее время для отображения времени последнего обновления
+    current_time = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+    update_info = f"Последнее обновление данных: {current_time}"
+    
+    # Возвращаем данные в формате JSON для хранения
+    return (
+        df.to_json(date_format='iso', orient='split'),
+        category_options,
+        category_values,
+        region_options,
+        region_values,
+        min_date,
+        max_date,
+        min_date,
+        max_date,
+        update_info
+    )
+
 # Определяем колбэки для обновления графиков
 @app.callback(
     [
@@ -205,13 +271,18 @@ app.layout = html.Div(
         Output("heatmap-chart", "figure")
     ],
     [
+        Input("data-store", "children"),
         Input("category-filter", "value"),
         Input("region-filter", "value"),
         Input("date-filter", "start_date"),
         Input("date-filter", "end_date")
     ]
 )
-def update_charts(categories, regions, start_date, end_date):
+def update_charts(json_data, categories, regions, start_date, end_date):
+    # Преобразуем JSON обратно в DataFrame
+    df = pd.read_json(json_data, orient='split')
+    df['Дата'] = pd.to_datetime(df['Дата'])
+    
     # Фильтруем данные
     filtered_df = df.copy()
     
