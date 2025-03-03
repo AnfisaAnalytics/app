@@ -37,7 +37,7 @@ header = dbc.Navbar(
             html.A(
                 dbc.Row(
                     [
-                        dbc.Col(html.H1("Аналитика продаж", className="ms-2 text-white")),
+                        dbc.Col(html.H1("Аналитика продаж__", className="ms-2 text-white")),
                     ],
                     align="center",
                 ),
