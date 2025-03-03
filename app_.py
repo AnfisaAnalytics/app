@@ -7,7 +7,8 @@ import plotly.graph_objects as go
 import numpy as np
 
 # Загружаем данные
-df = pd.read_csv('sales_data.csv')
+df = pd.read_csv('https://raw.githubusercontent.com/AnfisaAnalytics/app/3eaedc5fc2649d869db5c9c2e23621b7f858231b/sales_data.csv')
+
 df['Дата'] = pd.to_datetime(df['Дата'])
 df['Год'] = df['Дата'].dt.year
 df['Месяц'] = df['Дата'].dt.month
